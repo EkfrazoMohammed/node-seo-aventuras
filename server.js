@@ -355,14 +355,20 @@ const PORT = process.env.PORT || 3000;
 const BASE_URL = 'https://admin.aventuras.co.in';
 
 // Serve static files from CRA build
-const buildPath = path.join(__dirname, 'build');
-app.use(express.static(buildPath));
+const buildPath = path.resolve(__dirname, 'build');
+app.use('/static', express.static(path.join(buildPath, 'static')));
 
-// Verify build folder exists
+// Verify build folder and index.html exist
+const indexPath = path.join(buildPath, 'index.html');
 if (!fs.existsSync(buildPath)) {
   console.error('Build folder not found at:', buildPath);
 } else {
   console.log('Build folder found at:', buildPath);
+}
+if (!fs.existsSync(indexPath)) {
+  console.error('index.html not found at:', indexPath);
+} else {
+  console.log('index.html found at:', indexPath);
 }
 
 // Static meta tags for non-dynamic routes
@@ -491,6 +497,7 @@ const seoMiddleware = async (req, res, next) => {
       const response = await axios.get(
         `${BASE_URL}/api/all-destinations?populate=deep&filters[name][$containsi]=${dname}`
       );
+      console.log(`Destination API response for ${dname}:`, response.data);
       const data = response.data.data[0];
       if (data) {
         title = data.attributes.name;
@@ -503,6 +510,7 @@ const seoMiddleware = async (req, res, next) => {
       const response = await axios.get(
         `${BASE_URL}/api/all-destinations?populate=deep&filters[name][$containsi]=${dname}`
       );
+      console.log(`Search destination API response for ${dname}:`, response.data);
       const data = response.data.data[0];
       if (data) {
         title = `Search ${data.attributes.name} - Aventuras Holidays`;
@@ -513,32 +521,43 @@ const seoMiddleware = async (req, res, next) => {
     }
     else if (path.startsWith('/single-package/') && package_id) {
       const response = await axios.get(
-        `${BASE_URL}/api/all-packages?populate=*&filters[package_id][$eq]=${package_id}`
+        `${BASE_URL}/api/all-packages?populate=*&filters[package_id][$eqi]=${package_id}`
       );
+      console.log(`Package API response for ${package_id}:`, response.data);
       const data = response.data.data[0];
       if (data) {
         title = data.attributes.name;
         description = data.attributes.description || 'Book this exciting travel package with Aventuras Holidays.';
         image = data.attributes.package_images?.data[0]?.attributes.url ? `${BASE_URL}${data.attributes.package_images.data[0].attributes.url}` : image;
         content = `<div class="single-package-section"><h1>${title}</h1><p>${description}</p>${image ? `<img src="${image}" alt="${title}" />` : ''}</div>`;
+      } else {
+        title = `Package ${package_id} - Aventuras Holidays`;
+        description = `Explore travel package ${package_id} with Aventuras Holidays.`;
+        content = `<div class="single-package-section"><h1>Package ${package_id}</h1><p>${description}</p></div>`;
       }
     }
     else if (path.startsWith('/single-group-tour/') && package_id) {
       const response = await axios.get(
-        `${BASE_URL}/api/all-packages?populate=*&filters[package_id][$eq]=${package_id}`
+        `${BASE_URL}/api/all-packages?populate=*&filters[package_id][$eqi]=${package_id}`
       );
+      console.log(`Group tour API response for ${package_id}:`, response.data);
       const data = response.data.data[0];
       if (data) {
         title = `${data.attributes.name} Group Tour`;
         description = data.attributes.description || 'Join this group tour with Aventuras Holidays.';
         image = data.attributes.package_images?.data[0]?.attributes.url ? `${BASE_URL}${data.attributes.package_images.data[0].attributes.url}` : image;
         content = `<div class="single-group-tour-section"><h1>${title}</h1><p>${description}</p>${image ? `<img src="${image}" alt="${title}" />` : ''}</div>`;
+      } else {
+        title = `Group Tour ${package_id} - Aventuras Holidays`;
+        description = `Join group tour ${package_id} with Aventuras Holidays.`;
+        content = `<div class="single-group-tour-section"><h1>Group Tour ${package_id}</h1><p>${description}</p></div>`;
       }
     }
     else if (path.startsWith('/single-theme/') && id) {
       const response = await axios.get(
         `${BASE_URL}/api/themes/${id}?populate=*`
       );
+      console.log(`Theme API response for ${id}:`, response.data);
       const data = response.data.data;
       if (data) {
         title = data.attributes.name;
@@ -589,7 +608,6 @@ const seoMiddleware = async (req, res, next) => {
 
 // Single route to handle all requests
 app.get('*', seoMiddleware, (req, res) => {
-  const indexPath = path.join(__dirname, 'build', 'index.html');
   if (fs.existsSync(indexPath)) {
     console.log('Serving index.html for:', req.path);
     res.sendFile(indexPath);
