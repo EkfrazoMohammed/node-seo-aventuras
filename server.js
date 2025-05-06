@@ -158,7 +158,7 @@ const seoMiddleware = async (req, res, next) => {
       if (package_id) {
         try {
           const response = await axios.get(
-            `${BASE_URL}/api/all-packages?populate=*&filters[package_id][$eq]=${package_id}`
+            `${BASE_URL}/api/group-tours?populate=*&filters[package_id][$eq]=${package_id}`
           );
           console.log(`Group tour API response for ${package_id}:`, response.data);
           
@@ -326,3 +326,4 @@ app.get('*', seoMiddleware, (req, res) => {
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
+
