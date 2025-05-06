@@ -404,18 +404,38 @@ async function fetchWithCache(url) {
   }
 }
 
-// SEO Middleware
+// IMPROVED SEO Middleware - Better bot detection and client-side handling
 const seoMiddleware = async (req, res, next) => {
   const userAgent = req.headers['user-agent'] || '';
-  const isBot = /bot|crawler|spider|googlebot|bingbot|yahoo|duckduckbot|facebookexternalhit|twitterbot|linkedinbot|whatsapp|instagram|slackbot|pinterest/i.test(userAgent);
   
-  // For debugging
+  // More comprehensive bot detection
+  const botPattern = /bot|crawler|spider|googlebot|bingbot|yahoo|duckduckbot|facebookexternalhit|twitterbot|linkedinbot|whatsapp|instagram|slackbot|pinterest|baiduspider|yandex|sogou|exabot|ahrefsbot|semrushbot|lighthouse|screaming frog|chrome-lighthouse/i;
+  const isBot = botPattern.test(userAgent);
+  
+  // For debugging or explicit testing
   const queryIsBot = req.query.isBot === 'true';
-  const shouldRenderSEO = isBot || queryIsBot;
+  
+  // Check for common browser indicators
+  const isCommonBrowser = /chrome|firefox|safari|edge|opera|msie|trident/i.test(userAgent);
+  
+  // Add strict content negotiation - browsers typically want HTML
+  const acceptsHtml = (req.headers.accept || '').includes('text/html');
+  
+  // Only serve SEO version for bots or explicit testing
+  const shouldRenderSEO = (isBot && !isCommonBrowser) || queryIsBot;
 
-  console.log(`Path: ${req.path}, User-Agent: ${userAgent}, IsBot: ${isBot}, QueryIsBot: ${queryIsBot}`);
+  console.log(`Path: ${req.path}, User-Agent: ${userAgent}`);
+  console.log(`IsBot: ${isBot}, QueryIsBot: ${queryIsBot}, IsCommonBrowser: ${isCommonBrowser}, AcceptsHTML: ${acceptsHtml}`);
+  console.log(`Will render SEO content: ${shouldRenderSEO}`);
+
+  // Track reloads for debugging
+  const isReload = req.headers['cache-control'] === 'max-age=0' || req.headers['cache-control'] === 'no-cache';
+  if (isReload) {
+    console.log('This appears to be a page reload');
+  }
 
   if (!shouldRenderSEO) {
+    // For normal users - just serve the React app
     return next();
   }
 
@@ -434,7 +454,7 @@ const seoMiddleware = async (req, res, next) => {
       image = staticMeta[path].image;
       content = `<div class="page-section"><h1>${title}</h1><p>${description}</p></div>`;
     }
-    // Dynamic routes
+    // Dynamic routes - handling remains the same
     else if (path.startsWith('/single-destination/')) {
       const dname = path.split('/single-destination/')[1];
       if (dname) {
@@ -628,6 +648,8 @@ const seoMiddleware = async (req, res, next) => {
         <meta name="twitter:description" content="${description}">
         ${image ? `<meta name="twitter:image" content="${image}">` : ''}
         <link rel="stylesheet" href="/static/css/main.css">
+        <!-- Special flag to help debug -->
+        <meta name="rendered-for" content="bot">
       </head>
       <body>
         <div id="root">${content}</div>
@@ -666,6 +688,8 @@ const seoMiddleware = async (req, res, next) => {
         <meta name="twitter:description" content="${description}">
         ${image ? `<meta name="twitter:image" content="${image}">` : ''}
         <link rel="stylesheet" href="/static/css/main.css">
+        <!-- Special flag to help debug -->
+        <meta name="rendered-for" content="bot-error">
       </head>
       <body>
         <div id="root">${content}</div>
@@ -685,6 +709,8 @@ app.use(seoMiddleware);
 app.get('*', (req, res) => {
   if (fs.existsSync(indexPath)) {
     console.log('Serving index.html for:', req.path);
+    // Add header to indicate this is the React app
+    res.set('X-Rendered-App', 'react-client');
     res.sendFile(indexPath);
   } else {
     console.error('index.html not found at:', indexPath);
