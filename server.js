@@ -361,6 +361,8 @@ app.use(express.static(buildPath));
 // Verify build folder exists
 if (!fs.existsSync(buildPath)) {
   console.error('Build folder not found at:', buildPath);
+} else {
+  console.log('Build folder found at:', buildPath);
 }
 
 // Static meta tags for non-dynamic routes
@@ -589,8 +591,10 @@ const seoMiddleware = async (req, res, next) => {
 app.get('*', seoMiddleware, (req, res) => {
   const indexPath = path.join(__dirname, 'build', 'index.html');
   if (fs.existsSync(indexPath)) {
+    console.log('Serving index.html for:', req.path);
     res.sendFile(indexPath);
   } else {
+    console.error('index.html not found at:', indexPath);
     res.status(404).send('React build not found. Please ensure the build folder exists.');
   }
 });
