@@ -404,41 +404,62 @@ async function fetchWithCache(url) {
   }
 }
 
-// IMPROVED SEO Middleware - Better bot detection and client-side handling
+// Special session cookie to track if a user has already received SEO content
+// This helps with social media apps that scrape first then send users
+const SESSION_COOKIE = 'aventuras_render_mode';
+
+// IMPROVED SEO Middleware - Better bot detection and handling WhatsApp/social media clicks
 const seoMiddleware = async (req, res, next) => {
   const userAgent = req.headers['user-agent'] || '';
+  const referrer = req.headers['referer'] || '';
   
-  // More comprehensive bot detection
+  // Bot detection
   const botPattern = /bot|crawler|spider|googlebot|bingbot|yahoo|duckduckbot|facebookexternalhit|twitterbot|linkedinbot|whatsapp|instagram|slackbot|pinterest|baiduspider|yandex|sogou|exabot|ahrefsbot|semrushbot|lighthouse|screaming frog|chrome-lighthouse/i;
   const isBot = botPattern.test(userAgent);
   
-  // For debugging or explicit testing
+  // For debugging
   const queryIsBot = req.query.isBot === 'true';
   
   // Check for common browser indicators
   const isCommonBrowser = /chrome|firefox|safari|edge|opera|msie|trident/i.test(userAgent);
   
-  // Add strict content negotiation - browsers typically want HTML
-  const acceptsHtml = (req.headers.accept || '').includes('text/html');
+  // Check if this is a social media referral
+  const isSocialMediaReferral = /facebook|instagram|twitter|linkedin|whatsapp|t\.me|telegram/i.test(referrer);
   
-  // Only serve SEO version for bots or explicit testing
-  const shouldRenderSEO = (isBot && !isCommonBrowser) || queryIsBot;
+  // Check if user has a session cookie indicating they've already seen SEO content
+  const hasSessionCookie = req.cookies && req.cookies[SESSION_COOKIE] === 'react';
+  
+  // Handle WhatsApp and social media specifically
+  const whatsappPattern = /whatsapp/i;
+  const isWhatsAppUA = whatsappPattern.test(userAgent);
+  
+  // Detailed logging
+  console.log(`Path: ${req.path}`);
+  console.log(`User-Agent: ${userAgent}`);
+  console.log(`Referrer: ${referrer}`);
+  console.log(`Is Bot: ${isBot}`);
+  console.log(`Is WhatsApp UA: ${isWhatsAppUA}`);
+  console.log(`Is Social Media Referral: ${isSocialMediaReferral}`);
+  console.log(`Has Session Cookie: ${hasSessionCookie}`);
+  
+  // Decision logic - when to serve SEO content vs React app
+  // 1. For explicit bot testing
+  // 2. For actual bots that are not also common browsers
+  // 3. Never for users coming from social media apps or with existing session cookie
+  const shouldRenderSEO = (queryIsBot || (isBot && !isCommonBrowser)) && 
+                         !hasSessionCookie && 
+                         !isWhatsAppUA && 
+                         !isSocialMediaReferral;
 
-  console.log(`Path: ${req.path}, User-Agent: ${userAgent}`);
-  console.log(`IsBot: ${isBot}, QueryIsBot: ${queryIsBot}, IsCommonBrowser: ${isCommonBrowser}, AcceptsHTML: ${acceptsHtml}`);
   console.log(`Will render SEO content: ${shouldRenderSEO}`);
 
-  // Track reloads for debugging
-  const isReload = req.headers['cache-control'] === 'max-age=0' || req.headers['cache-control'] === 'no-cache';
-  if (isReload) {
-    console.log('This appears to be a page reload');
-  }
-
   if (!shouldRenderSEO) {
-    // For normal users - just serve the React app
+    // Set a cookie to remember this user should get the React app
+    res.cookie(SESSION_COOKIE, 'react', { maxAge: 3600000, httpOnly: true });
     return next();
   }
 
+  // SEO content generation remains mostly the same
   let title = 'Aventuras Holidays';
   let description = 'Discover amazing travel experiences with Aventuras Holidays.';
   let image = 'https://admin.aventuras.co.in/uploads/image_1_1_2a69dfc02b.png';
@@ -630,6 +651,32 @@ const seoMiddleware = async (req, res, next) => {
       content = `<div class="not-found-section"><h1>404 - Page Not Found</h1><p>Sorry, the page you are looking for does not exist.</p></div>`;
     }
 
+    // Add a special script to handle the case where a bot requests the page 
+    // but a human clicks through - this will redirect to the non-SEO version
+    const redirectScript = `
+      <script>
+        // Check if this looks like a human browser
+        function isHumanBrowser() {
+          return /chrome|firefox|safari|edge|opera|msie|trident/i.test(navigator.userAgent) && 
+                 !/(bot|crawler|spider|facebook|whatsapp|linkedin)/i.test(navigator.userAgent);
+        }
+        
+        // Check if we came from social media
+        function isFromSocial() {
+          return document.referrer && 
+                 /(facebook|twitter|instagram|linkedin|whatsapp|t\\.me|telegram)/i.test(document.referrer);
+        }
+        
+        // If this appears to be a human that clicked through from social media
+        if (isHumanBrowser() && isFromSocial()) {
+          // Set a flag in localStorage
+          localStorage.setItem('aventuras_render_mode', 'react');
+          // Reload the page to get the React version
+          window.location.reload();
+        }
+      </script>
+    `;
+
     const html = `
       <!DOCTYPE html>
       <html lang="en">
@@ -650,6 +697,7 @@ const seoMiddleware = async (req, res, next) => {
         <link rel="stylesheet" href="/static/css/main.css">
         <!-- Special flag to help debug -->
         <meta name="rendered-for" content="bot">
+        ${redirectScript}
       </head>
       <body>
         <div id="root">${content}</div>
@@ -701,6 +749,10 @@ const seoMiddleware = async (req, res, next) => {
     return res.send(html);
   }
 };
+
+// Add cookie-parser middleware to handle cookies
+const cookieParser = require('cookie-parser');
+app.use(cookieParser());
 
 // Always use seoMiddleware first to handle bot requests
 app.use(seoMiddleware);
